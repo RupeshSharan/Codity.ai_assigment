@@ -424,22 +424,26 @@ def run():
                 background-color: #fafafa;
             }}
 
-            /* Diagram Images (Optimized for full width size) */
+            /* Diagram Images (Optimized to fit on a single page) */
             .diagram-image-container {{
-                margin: 25px auto;
+                margin: 15px auto;
                 text-align: center;
                 break-inside: avoid;
+                page-break-inside: avoid;
                 width: 100%;
             }}
 
             .diagram-image {{
-                width: 100%;
                 max-width: 100%;
+                max-height: 20.5cm; /* Keeps the diagram fully on a single A4 page without breaking */
+                width: auto;
                 height: auto;
+                display: block;
+                margin: 0 auto;
                 border: 1px solid #e4e4e7;
                 border-radius: 8px;
                 background-color: #ffffff;
-                padding: 18px;
+                padding: 16px;
                 box-sizing: border-box;
                 box-shadow: 0 1px 3px rgba(0,0,0,0.02);
             }}
