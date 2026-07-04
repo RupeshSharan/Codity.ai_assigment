@@ -1,0 +1,11 @@
+flowchart TB
+    UI["React Dashboard"] --> API["FastAPI Backend"]
+    API --> DB[(PostgreSQL)]
+    API --> Redis[(Redis)]
+    Scheduler["Scheduler Service"] --> DB
+    Worker1["Worker"] --> API
+    Worker2["Worker"] --> API
+    API --> Auth["JWT Auth"]
+    API --> Queue["Queue Manager"]
+    API --> Jobs["Job Lifecycle"]
+

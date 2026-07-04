@@ -1,0 +1,11 @@
+erDiagram
+    USERS ||--o{ ORGANIZATIONS : owns
+    ORGANIZATIONS ||--o{ PROJECTS : contains
+    PROJECTS ||--o{ QUEUES : owns
+    QUEUES ||--o{ JOBS : contains
+    JOBS ||--o{ JOB_EXECUTIONS : has
+    JOBS ||--o{ JOB_LOGS : has
+    JOBS ||--o| DEAD_LETTER_ENTRIES : fails_into
+    WORKERS ||--o{ WORKER_HEARTBEATS : sends
+    WORKERS ||--o{ JOB_EXECUTIONS : runs
+

@@ -1,0 +1,73 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: pulsequeue
+      POSTGRES_PASSWORD: pulsequeue
+      POSTGRES_DB: pulsequeue
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pulsequeue"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    env_file: .env.example
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    ports:
+      - "8000:8000"
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: docker/scheduler.Dockerfile
+    env_file: .env.example
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: python -m app.scheduler.service
+
+  worker:
+    build:
+      context: .
+      dockerfile: docker/backend-worker.Dockerfile
+    env_file: .env.example
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      WORKER_ID: worker-compose-1
+      WORKER_VERSION: compose
+    command: python -m app.workers.runner
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    depends_on:
+      - api
+    ports:
+      - "5173:5173"
+
+volumes:
+  postgres_data:
+
