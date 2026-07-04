@@ -1,6 +1,11 @@
 import os
 import sys
 import subprocess
+import re
+import zlib
+import base64
+import hashlib
+import urllib.request
 from datetime import datetime
 
 def check_dependencies():
@@ -14,12 +19,45 @@ def check_dependencies():
 check_dependencies()
 import markdown
 
+def get_kroki_diagram(diagram_text, screenshots_dir):
+    """
+    Compresses mermaid diagram and fetches SVG from Kroki,
+    saving it locally and returning the local file:// URL.
+    """
+    # Clean diagram text
+    diagram_text = diagram_text.strip()
+    
+    # Generate unique hash for this diagram
+    diagram_hash = hashlib.md5(diagram_text.encode('utf-8')).hexdigest()
+    svg_filename = f"diagram_{diagram_hash}.svg"
+    svg_path = os.path.join(screenshots_dir, svg_filename)
+    
+    # Download if not cached
+    if not os.path.exists(svg_path):
+        try:
+            compressed = zlib.compress(diagram_text.encode('utf-8'), 9)
+            encoded = base64.urlsafe_b64encode(compressed).decode('utf-8')
+            url = f"https://kroki.io/mermaid/svg/{encoded}"
+            
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req) as response:
+                with open(svg_path, 'wb') as out_file:
+                    out_file.write(response.read())
+            print(f"  -> Rendered and saved diagram to docs/screenshots/{svg_filename}")
+        except Exception as e:
+            print(f"  [Warning] Failed to fetch diagram SVG from Kroki: {e}")
+            return None
+            
+    # Return file URL
+    file_url = "file:///" + svg_path.replace("\\", "/")
+    return file_url
+
 def run():
     print("=" * 60)
     print("      PulseQueue Assignment PDF Submission Compiler")
     print("=" * 60)
-    print("This script will combine your documentation and screenshots into a")
-    print("single submission-ready PDF file.")
+    print("This script will combine your documentation, diagrams, and screenshots")
+    print("into a single submission-ready PDF file.")
     print("-" * 60)
 
     # Prompt details
@@ -35,7 +73,6 @@ def run():
     if not os.path.exists(screenshots_dir):
         os.makedirs(screenshots_dir)
         print(f"\n[Notice] Created screenshot folder at: {screenshots_dir}")
-        print("Please place your dashboard screenshots there to include them in the PDF.")
 
     # Select docs to include in order
     files_to_merge = [
@@ -58,7 +95,7 @@ def run():
     <div class="cover-page">
         <div class="logo">PQ</div>
         <h1>PulseQueue</h1>
-        <h2>A Production-Inspired Distributed Job Scheduling Platform</h2>
+        <h2>A Production-Inspired Distributed Job Scheduler Platform</h2>
         <div class="divider"></div>
         <div class="meta-container">
             <div class="meta-item"><strong>Student Name:</strong> {name}</div>
@@ -72,6 +109,9 @@ def run():
     """
     html_content.append(cover_page)
 
+    # Regex to extract mermaid code blocks
+    mermaid_pattern = re.compile(r'```mermaid\s*\n(.*?)\n```', re.DOTALL)
+
     # 2. Append markdown docs
     for title, rel_path in files_to_merge:
         full_path = os.path.join(root_dir, rel_path)
@@ -79,12 +119,21 @@ def run():
             print(f"[Warning] File not found: {rel_path}, skipping.")
             continue
         
-        print(f"Merging: {rel_path}...")
+        print(f"Processing & Merging: {rel_path}...")
         with open(full_path, "r", encoding="utf-8") as f:
             md_text = f.read()
 
-        # Convert markdown code blocks with mermaid to clean blocks
-        md_text = md_text.replace("```mermaid", "```text")
+        # Find and render all mermaid blocks
+        def replace_mermaid(match):
+            diagram_code = match.group(1)
+            file_url = get_kroki_diagram(diagram_code, screenshots_dir)
+            if file_url:
+                return f'<div class="diagram-image-container"><img src="{file_url}" alt="System Diagram" class="diagram-image" /></div>'
+            else:
+                # Fallback to text block if download fails
+                return f'<pre><code class="language-text">{diagram_code}</code></pre>'
+
+        md_text = mermaid_pattern.sub(replace_mermaid, md_text)
 
         # Convert md to html
         html_section = markdown.markdown(md_text, extensions=['fenced_code', 'tables'])
@@ -100,7 +149,8 @@ def run():
     screenshot_files = []
     if os.path.exists(screenshots_dir):
         for f in sorted(os.listdir(screenshots_dir)):
-            if f.lower().endswith((".png", ".jpg", ".jpeg")):
+            # Filter out diagram SVGs so we only include manual user screenshots in the gallery
+            if f.lower().endswith((".png", ".jpg", ".jpeg")) and not f.startswith("diagram_"):
                 screenshot_files.append(f)
 
     if screenshot_files:
@@ -108,7 +158,6 @@ def run():
         html_content.append("<div class='section-container'><h1>System Operations Gallery</h1><p>The following screen captures demonstrate the live dashboard and APIs executing background jobs.</p>")
         for sf in screenshot_files:
             sf_path = os.path.join(screenshots_dir, sf)
-            # Use relative path or base64. On Windows, absolute path file:// works best for Edge print.
             sf_url = "file:///" + sf_path.replace("\\", "/")
             caption = sf.split(".")[0].replace("_", " ").title()
             print(f"- Embedding screenshot: {sf} as '{caption}'")
@@ -216,7 +265,7 @@ def run():
 
             .meta-container {{
                 background-color: #edf2f4;
-                border: 1px border #e4e4e7;
+                border: 1px solid #e4e4e7;
                 border-radius: 8px;
                 padding: 24px;
                 width: 100%;
@@ -344,6 +393,23 @@ def run():
                 background-color: #fafafa;
             }}
 
+            /* Diagram Images */
+            .diagram-image-container {{
+                margin: 20px 0;
+                text-align: center;
+                break-inside: avoid;
+            }}
+
+            .diagram-image {{
+                max-width: 100%;
+                max-height: 380px;
+                height: auto;
+                border: 1px solid #e4e4e7;
+                border-radius: 6px;
+                background-color: #fafafa;
+                padding: 12px;
+            }}
+
             /* Screenshots Gallery */
             .screenshot-container {{
                 margin-bottom: 30px;
@@ -386,6 +452,7 @@ def run():
         edge_executable,
         "--headless",
         "--disable-gpu",
+        "--no-sandbox",
         f"--print-to-pdf={output_pdf_path}",
         temp_html_path
     ]
@@ -393,7 +460,7 @@ def run():
     try:
         subprocess.run(edge_args, check=True)
         print("-" * 60)
-        print(" SUCCESS: Submission PDF created successfully!")
+        print(" SUCCESS: Submission PDF created successfully with diagrams!")
         print(f" PDF Location: {output_pdf_path}")
         print("-" * 60)
     except Exception as e:
