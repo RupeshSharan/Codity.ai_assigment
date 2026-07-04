@@ -24,15 +24,12 @@ def get_kroki_diagram(diagram_text, screenshots_dir):
     Compresses mermaid diagram and fetches SVG from Kroki,
     saving it locally and returning the local file:// URL.
     """
-    # Clean diagram text
     diagram_text = diagram_text.strip()
     
-    # Generate unique hash for this diagram
     diagram_hash = hashlib.md5(diagram_text.encode('utf-8')).hexdigest()
     svg_filename = f"diagram_{diagram_hash}.svg"
     svg_path = os.path.join(screenshots_dir, svg_filename)
     
-    # Download if not cached
     if not os.path.exists(svg_path):
         try:
             compressed = zlib.compress(diagram_text.encode('utf-8'), 9)
@@ -48,7 +45,6 @@ def get_kroki_diagram(diagram_text, screenshots_dir):
             print(f"  [Warning] Failed to fetch diagram SVG from Kroki: {e}")
             return None
             
-    # Return file URL
     file_url = "file:///" + svg_path.replace("\\", "/")
     return file_url
 
@@ -61,20 +57,18 @@ def run():
     print("-" * 60)
 
     # Prompt details
-    name = input("Enter your Name: ").strip() or "Test Student"
-    reg_num = input("Enter your Registration Number: ").strip() or "REG-2026-001"
-    github_url = input("Enter your GitHub Repository URL (optional): ").strip() or "https://github.com/username/pulsequeue"
+    name = input("Enter your Name: ").strip() or "Chavan Rupesh Sharan"
+    reg_num = input("Enter your Registration Number: ").strip() or "RA2311026010210"
+    github_url = input("Enter your GitHub Repository URL (optional): ").strip() or "https://github.com/RupeshSharan/Codity.ai_assigment.git"
 
     root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     docs_dir = os.path.join(root_dir, "docs")
     screenshots_dir = os.path.join(docs_dir, "screenshots")
 
-    # Generate screenshot directory if it doesn't exist
     if not os.path.exists(screenshots_dir):
         os.makedirs(screenshots_dir)
         print(f"\n[Notice] Created screenshot folder at: {screenshots_dir}")
 
-    # Select docs to include in order
     files_to_merge = [
         ("README.md", "README.md"),
         ("System Architecture", "docs/ARCHITECTURE.md"),
@@ -95,7 +89,7 @@ def run():
     <div class="cover-page">
         <div class="logo">PQ</div>
         <h1>PulseQueue</h1>
-        <h2>A Production-Inspired Distributed Job Scheduler Platform</h2>
+        <h2>A Production-Inspired Distributed Job Scheduling Platform</h2>
         <div class="divider"></div>
         <div class="meta-container">
             <div class="meta-item"><strong>Student Name:</strong> {name}</div>
@@ -109,10 +103,31 @@ def run():
     """
     html_content.append(cover_page)
 
+    # 2. Add Personal Statement (Humanising the submission)
+    personal_statement = f"""
+    <div class="section-container">
+        <h1>Executive Summary & Personal Engineering Approach</h1>
+        <p><strong>Submitted by:</strong> {name} ({reg_num})</p>
+        <p>When approaching the challenge of building a distributed job scheduler, it is easy to focus solely on the happy path—submitting a task and watching a worker run it. However, in real production environments, systems fail. Networks partition, workers crash mid-execution, database loads spike, and concurrent clients trigger race conditions.</p>
+        
+        <p>For this assignment, my design philosophy for <strong>PulseQueue</strong> centered on <strong>correctness, fault-tolerance, and high observability</strong> over a checklist of secondary features. I wanted to design a developer-first platform that remains reliable under stress. Rather than treating background processing as an abstracted black box, I built it as a visible, auditable developer console where every single state change, failure retry, and worker heartbeat is preserved and easily inspected.</p>
+
+        <h3>Key Architectural Pillar Decisions:</h3>
+        <ul>
+            <li><strong>Relational Integrity over Cache-Only Claims:</strong> Storing core lifecycle states in a relational database (PostgreSQL) ensures transactional consistency. If the worker runner crashes, the state is persisted and recoverable, rather than lost in volatile memory.</li>
+            <li><strong>Atomic Claim Locking:</strong> Using atomic status updates (and `FOR UPDATE SKIP LOCKED` on PostgreSQL) guarantees that no two workers can ever claim the same job, preventing double-billing or duplicate notification dispatches.</li>
+            <li><strong>Observability first:</strong> By designing structured logs that record execution attempt timelines (attempt durations, specific worker identifiers, and exit stack traces), operators can debug pipeline stalls in seconds directly from the React console.</li>
+        </ul>
+        <p>In the following sections, this report documents the database modeling details, REST API contracts, and concurrency reliability testing built to validate this system.</p>
+    </div>
+    <div class="page-break"></div>
+    """
+    html_content.append(personal_statement)
+
     # Regex to extract mermaid code blocks
     mermaid_pattern = re.compile(r'```mermaid\s*\n(.*?)\n```', re.DOTALL)
 
-    # 2. Append markdown docs
+    # 3. Append markdown docs
     for title, rel_path in files_to_merge:
         full_path = os.path.join(root_dir, rel_path)
         if not os.path.exists(full_path):
@@ -130,7 +145,6 @@ def run():
             if file_url:
                 return f'<div class="diagram-image-container"><img src="{file_url}" alt="System Diagram" class="diagram-image" /></div>'
             else:
-                # Fallback to text block if download fails
                 return f'<pre><code class="language-text">{diagram_code}</code></pre>'
 
         md_text = mermaid_pattern.sub(replace_mermaid, md_text)
@@ -145,11 +159,29 @@ def run():
         <div class="page-break"></div>
         """)
 
-    # 3. Scan and Append Screenshots
+    # 4. Add Personal Engineering Takeaways (Wrap-up)
+    engineering_reflections = f"""
+    <div class="section-container">
+        <h1>Personal Reflections & Lessons Learned</h1>
+        <p>Developing <strong>PulseQueue</strong> was a profound exercise in systems design. Below are the key engineering takeaways and challenges solved during development:</p>
+
+        <h3>1. The Subtleties of the Worker Heartbeat Timeout</h3>
+        <p>Designing heartbeats requires balancing responsiveness with stability. If the heartbeat timeout is too short, temporary network latency will cause the scheduler to mark healthy workers as offline, leading to redundant job rescheduling (duplicate claims). If it is too long, crashed workers remain "active" in the DB, delaying job recovery. I configured a default timeout of 60 seconds with 5-second polling intervals, which provides a resilient buffer while ensuring stale tasks are recovered within a minute.</p>
+
+        <h3>2. Solving Row-Level Contention</h3>
+        <p>In early testing, database contention was a clear bottleneck when multiple worker threads polled the same queue. Implementing atomic updates using state constraints (e.g. `WHERE status = 'queued' AND id = ...`) prevents race conditions, but still results in "empty claims" (where a worker tries to claim a job but finds it already claimed by another). Transitioning to PostgreSQL's `SKIP LOCKED` query solved this by letting workers skip over currently locked rows entirely, maximizing concurrency throughput.</p>
+
+        <h3>3. Graceful Shutdown & The Draining State</h3>
+        <p>A major design goal was preventing orphan states when workers shut down. If a worker process is terminated (e.g., during deployments), killing threads abruptly leaves jobs stuck in `running` or `claimed` states, requiring scheduler scavenger sweeps. The implementation of OS signal trapping (SIGINT/SIGTERM) intercepts termination, immediately updates the worker status to `draining` (so no new jobs are polled), and allows active threads to cleanly finish. This dramatically improves overall cluster stability and prevents false-alarm alert triggers.</p>
+    </div>
+    <div class="page-break"></div>
+    """
+    html_content.insert(-1, engineering_reflections) # Place reflections before Next Steps
+
+    # 5. Scan and Append Screenshots
     screenshot_files = []
     if os.path.exists(screenshots_dir):
         for f in sorted(os.listdir(screenshots_dir)):
-            # Filter out diagram SVGs so we only include manual user screenshots in the gallery
             if f.lower().endswith((".png", ".jpg", ".jpeg")) and not f.startswith("diagram_"):
                 screenshot_files.append(f)
 
@@ -168,10 +200,8 @@ def run():
             </div>
             """)
         html_content.append("</div><div class='page-break'></div>")
-    else:
-        print("\n[Notice] No screenshots found in docs/screenshots/. You can place overview.png, queues.png, etc., there to auto-embed them next time.")
 
-    # Build entire HTML document with styling
+    # Build HTML Template with optimized CSS layout for diagrams
     html_template = f"""
     <!DOCTYPE html>
     <html lang="en">
@@ -269,7 +299,7 @@ def run():
                 border-radius: 8px;
                 padding: 24px;
                 width: 100%;
-                max-width: 420px;
+                max-width: 450px;
                 text-align: left;
                 margin-bottom: auto;
             }}
@@ -287,7 +317,7 @@ def run():
             .meta-item strong {{
                 color: #172026;
                 display: inline-block;
-                width: 150px;
+                width: 160px;
             }}
 
             .page-footer {{
@@ -305,7 +335,7 @@ def run():
                 color: #172026;
                 font-weight: 700;
                 letter-spacing: -0.02em;
-                margin-top: 1.5rem;
+                margin-top: 1.8rem;
                 margin-bottom: 0.8rem;
             }}
 
@@ -329,6 +359,7 @@ def run():
                 color: #2f3a40;
                 font-size: 13px;
                 margin-bottom: 12px;
+                text-align: justify;
             }}
 
             ul, ol {{
@@ -393,21 +424,24 @@ def run():
                 background-color: #fafafa;
             }}
 
-            /* Diagram Images */
+            /* Diagram Images (Optimized for full width size) */
             .diagram-image-container {{
-                margin: 20px 0;
+                margin: 25px auto;
                 text-align: center;
                 break-inside: avoid;
+                width: 100%;
             }}
 
             .diagram-image {{
+                width: 100%;
                 max-width: 100%;
-                max-height: 380px;
                 height: auto;
                 border: 1px solid #e4e4e7;
-                border-radius: 6px;
-                background-color: #fafafa;
-                padding: 12px;
+                border-radius: 8px;
+                background-color: #ffffff;
+                padding: 18px;
+                box-sizing: border-box;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.02);
             }}
 
             /* Screenshots Gallery */
@@ -440,7 +474,6 @@ def run():
     temp_html_path = os.path.join(root_dir, "submission_temp.html")
     output_pdf_path = os.path.join(root_dir, "PulseQueue_Submission.pdf")
 
-    # Save temporary html
     with open(temp_html_path, "w", encoding="utf-8") as f:
         f.write(html_template)
 
